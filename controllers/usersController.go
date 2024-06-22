@@ -5,20 +5,16 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 	"go-jwt/initializers"
 	"go-jwt/models"
+	"go-jwt/types"
 	"golang.org/x/crypto/bcrypt"
 	"net/http"
 	"os"
 	"time"
 )
 
-type SignupRequestBody struct {
-	Email    string `json:"email" binding:"required,email"`
-	Password string `json:"password" binding:"required,min=8"`
-}
-
 func SignUp(c *gin.Context) {
 	// get the email/pass from req body
-	var body SignupRequestBody
+	var body types.SignupRequestBody
 
 	err := c.ShouldBindJSON(&body)
 	if err != nil {
@@ -30,7 +26,7 @@ func SignUp(c *gin.Context) {
 	hash, err := bcrypt.GenerateFromPassword([]byte(body.Password), bcrypt.DefaultCost)
 
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "failed to read body"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 
 		return
 	}
@@ -41,7 +37,7 @@ func SignUp(c *gin.Context) {
 	result := initializers.DB.Create(&user)
 
 	if result.Error != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "failed to create user"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Failed to create user"})
 
 		return
 	}
@@ -50,14 +46,9 @@ func SignUp(c *gin.Context) {
 	c.JSON(http.StatusCreated, gin.H{})
 }
 
-type LoginRequestBody struct {
-	Email    string `json:"email" binding:"required,email"`
-	Password string `json:"password" binding:"required"`
-}
-
 func Login(c *gin.Context) {
 	// get the email/pass from req body
-	var body LoginRequestBody
+	var body types.LoginRequestBody
 
 	err := c.ShouldBindJSON(&body)
 	if err != nil {
@@ -109,22 +100,17 @@ func Validate(c *gin.Context) {
 	// return message
 	c.JSON(http.StatusOK, gin.H{
 		"message":  "you're logged in",
-		"userInfo": user, // for debugging purposesS
+		"userInfo": user, // for debugging purposes
 	})
-}
-
-type ChangePasswordRequestBody struct {
-	Password string `json:"password" binding:"required"`
-	NewPass  string `json:"new_pass" binding:"required,min=8"`
 }
 
 func ChangePassword(c *gin.Context) {
 	// get current and new pass off body
-	var body *ChangePasswordRequestBody
+	var body *types.ChangePasswordRequestBody
 
-	err := c.Bind(&body)
+	err := c.ShouldBindJSON(&body)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Failed to read body"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body"})
 		return
 	}
 
@@ -137,7 +123,7 @@ func ChangePassword(c *gin.Context) {
 	user := userInterface.(models.User)
 
 	// fetch user record from the database
-	var dbUser models.User
+	var dbUser *models.User
 	initializers.DB.First(&dbUser, "id=?", user.ID)
 	if dbUser.ID == 0 {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "User not found"})

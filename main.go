@@ -13,7 +13,8 @@ func init() {
 	initializers.ConnectToDB()
 	initializers.SyncDB()
 }
-func main() {
+
+func SetUpRouter() *gin.Engine {
 	r := gin.Default()
 
 	r.GET("/ping", func(c *gin.Context) {
@@ -23,7 +24,13 @@ func main() {
 	r.POST("/x/sign-up", controllers.SignUp)
 	r.POST("/x/sign-in", controllers.Login)
 	r.POST("/x/reset-password", middleware.RequireAuth, controllers.ChangePassword)
-	err := r.Run() // listen and serve on 0.0.0.0:3000
+
+	return r
+}
+
+func main() {
+	router := SetUpRouter()
+	err := router.Run() // listen and serve on 0.0.0.0:3000
 
 	if err != nil {
 		panic(err)
