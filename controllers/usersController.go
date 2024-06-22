@@ -11,18 +11,18 @@ import (
 	"time"
 )
 
+type SignupRequestBody struct {
+	Email    string `json:"email" binding:"required,email"`
+	Password string `json:"password" binding:"required,min=8"`
+}
+
 func SignUp(c *gin.Context) {
 	// get the email/pass from req body
-	var body struct {
-		Email    string
-		Password string
-	}
+	var body SignupRequestBody
 
-	err := c.Bind(&body)
-
+	err := c.ShouldBindJSON(&body)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "failed to read body"})
-
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body"})
 		return
 	}
 
@@ -47,42 +47,36 @@ func SignUp(c *gin.Context) {
 	}
 
 	// return response
-	c.JSON(http.StatusOK, gin.H{})
+	c.JSON(http.StatusCreated, gin.H{})
+}
+
+type LoginRequestBody struct {
+	Email    string `json:"email" binding:"required,email"`
+	Password string `json:"password" binding:"required"`
 }
 
 func Login(c *gin.Context) {
-
 	// get the email/pass from req body
-	var body struct {
-		Email    string
-		Password string
-	}
+	var body LoginRequestBody
 
-	err := c.Bind(&body)
-
+	err := c.ShouldBindJSON(&body)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "failed to read body"})
-
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body"})
 		return
 	}
 
 	// look up requested user
-	var user *models.User
+	var user models.User
 	initializers.DB.First(&user, "email = ?", body.Email)
-
 	if user.ID == 0 {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid email or password"})
-
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid email or password"})
 		return
-
 	}
 
 	// compare sent in pass with saved user pass hash
 	err = bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(body.Password))
-
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid email or password"})
-
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid email or password"})
 		return
 	}
 
@@ -94,16 +88,10 @@ func Login(c *gin.Context) {
 
 	// Sign and get the complete encoded token as a string using the secret
 	tokenString, err := token.SignedString([]byte(os.Getenv("JWT_SECRET")))
-
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "failed to create token"})
-
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Failed to create token"})
 		return
 	}
-	// send the token back
-	//c.JSON(http.StatusOK, gin.H{
-	//	"token": tokenString,
-	//})
 
 	// set cookies because why not? cookies are better
 	c.SetSameSite(http.SameSiteLaxMode)
@@ -112,12 +100,74 @@ func Login(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{})
 }
 
-var user *models.User
-
 func Validate(c *gin.Context) {
-	user, _ := c.Get("user")
+	user, exists := c.Get("user")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+		return
+	}
+	// return message
 	c.JSON(http.StatusOK, gin.H{
 		"message":  "you're logged in",
-		"userInfo": user,
+		"userInfo": user, // for debugging purposesS
 	})
+}
+
+type ChangePasswordRequestBody struct {
+	Password string `json:"password" binding:"required"`
+	NewPass  string `json:"new_pass" binding:"required,min=8"`
+}
+
+func ChangePassword(c *gin.Context) {
+	// get current and new pass off body
+	var body *ChangePasswordRequestBody
+
+	err := c.Bind(&body)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Failed to read body"})
+		return
+	}
+
+	// get user from context(cookie)
+	userInterface, exists := c.Get("user")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+		return
+	}
+	user := userInterface.(models.User)
+
+	// fetch user record from the database
+	var dbUser models.User
+	initializers.DB.First(&dbUser, "id=?", user.ID)
+	if dbUser.ID == 0 {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "User not found"})
+		return
+	}
+
+	// Check if new password matches the current password
+	err = bcrypt.CompareHashAndPassword([]byte(dbUser.Password), []byte(body.NewPass))
+	if err == nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "New password cannot match current one"})
+		return
+	}
+
+	// compare current password with the stored password
+	err = bcrypt.CompareHashAndPassword([]byte(dbUser.Password), []byte(body.Password))
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Incorrect current password"})
+		return
+	}
+
+	// hash the new password
+	newHashedPassword, err := bcrypt.GenerateFromPassword([]byte(body.NewPass), bcrypt.DefaultCost)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to hash new password"})
+		return
+	}
+
+	// update the password in the database
+	initializers.DB.Model(&dbUser).Update("Password", string(newHashedPassword))
+
+	// return success
+	c.JSON(http.StatusOK, gin.H{"message": "Password changed successfully"})
 }

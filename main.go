@@ -21,7 +21,8 @@ func main() {
 	})
 	r.GET("/validate", middleware.RequireAuth, controllers.Validate)
 	r.POST("/x/sign-up", controllers.SignUp)
-	r.POST("x/sign-in", controllers.Login)
+	r.POST("/x/sign-in", controllers.Login)
+	r.POST("/x/reset-password", middleware.RequireAuth, controllers.ChangePassword)
 	err := r.Run() // listen and serve on 0.0.0.0:3000
 
 	if err != nil {
