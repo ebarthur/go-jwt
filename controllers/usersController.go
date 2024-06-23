@@ -84,7 +84,7 @@ func Login(c *gin.Context) {
 		return
 	}
 
-	// set cookies because why not? cookies are better
+	// set cookies because why not? cookies are good yum yum!
 	c.SetSameSite(http.SameSiteLaxMode)
 	c.SetCookie("Authorization", tokenString, 3600*24*30, "", "", false, true)
 
